@@ -62,13 +62,14 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
 
     mpVocabulary = new ORBVocabulary();
+    bool bVocLoad = false;
     if(strVocFile.substr(strVocFile.find_last_of(".") + 1) == "txt")
     {
-        bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
+        bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
     }
     else
     {
-        bool bVocLoad = mpVocabulary->loadFromYmlFile(strVocFile);
+        bVocLoad = mpVocabulary->loadFromYmlFile(strVocFile);
     }
 
     if(!bVocLoad)
