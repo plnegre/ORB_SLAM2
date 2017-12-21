@@ -241,6 +241,12 @@ public:
   bool loadFromTextFile(const std::string &filename);
 
   /**
+   * Load the vocabulary from a yml file
+   * @param filename
+   */
+  bool loadFromYmlFile(const std::string &filename);
+
+  /**
    * Saves the vocabulary into a text file
    * @param filename
    */
@@ -1421,6 +1427,62 @@ bool TemplatedVocabulary<TDescriptor,F>::loadFromTextFile(const std::string &fil
 
     return true;
 
+}
+
+template<class TDescriptor, class F>
+bool TemplatedVocabulary<TDescriptor,F>::loadFromYmlFile(const std::string &filename)
+{
+  const std::string name = "vocabulary";
+
+  cv::FileStorage fs(filename.c_str(), cv::FileStorage::READ);
+  if(!fs.isOpened()) throw std::string("Could not open file ") + filename;
+
+  m_words.clear();
+  m_nodes.clear();
+  
+  cv::FileNode fvoc = fs[name];
+  
+  m_k = (int)fvoc["k"];
+  m_L = (int)fvoc["L"];
+  m_scoring = (ScoringType)((int)fvoc["scoringType"]);
+  m_weighting = (WeightingType)((int)fvoc["weightingType"]);
+  
+  createScoringObject();
+
+  // nodes
+  cv::FileNode fn = fvoc["nodes"];
+
+  m_nodes.resize(fn.size() + 1); // +1 to include root
+  m_nodes[0].id = 0;
+
+  for(unsigned int i = 0; i < fn.size(); ++i)
+  {
+    NodeId nid = (int)fn[i]["nodeId"];
+    NodeId pid = (int)fn[i]["parentId"];
+    WordValue weight = (WordValue)fn[i]["weight"];
+    std::string d = (std::string)fn[i]["descriptor"];
+    
+    m_nodes[nid].id = nid;
+    m_nodes[nid].parent = pid;
+    m_nodes[nid].weight = weight;
+    m_nodes[pid].children.push_back(nid);
+    
+    F::fromString(m_nodes[nid].descriptor, d);
+  }
+  
+  // words
+  fn = fvoc["words"];
+  
+  m_words.resize(fn.size());
+
+  for(unsigned int i = 0; i < fn.size(); ++i)
+  {
+    NodeId wid = (int)fn[i]["wordId"];
+    NodeId nid = (int)fn[i]["nodeId"];
+    
+    m_nodes[nid].word_id = wid;
+    m_words[wid] = &m_nodes[nid];
+  }
 }
 
 // --------------------------------------------------------------------------
