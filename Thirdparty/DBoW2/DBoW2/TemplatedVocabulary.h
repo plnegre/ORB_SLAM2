@@ -1435,7 +1435,9 @@ bool TemplatedVocabulary<TDescriptor,F>::loadFromYmlFile(const std::string &file
   const std::string name = "vocabulary";
 
   cv::FileStorage fs(filename.c_str(), cv::FileStorage::READ);
-  if(!fs.isOpened()) throw std::string("Could not open file ") + filename;
+  if(!fs.isOpened()) {
+    return false;
+  }
 
   m_words.clear();
   m_nodes.clear();
@@ -1483,6 +1485,8 @@ bool TemplatedVocabulary<TDescriptor,F>::loadFromYmlFile(const std::string &file
     m_nodes[nid].word_id = wid;
     m_words[wid] = &m_nodes[nid];
   }
+
+  return true;
 }
 
 // --------------------------------------------------------------------------
