@@ -29,6 +29,8 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <tf/transform_broadcaster.h>
+#include <nav_msgs/Odometry.h>
 
 #include<opencv2/core/core.hpp>
 
@@ -46,6 +48,8 @@ public:
     ORB_SLAM2::System* mpSLAM;
     bool do_rectify;
     cv::Mat M1l,M2l,M1r,M2r;
+    tf::TransformBroadcaster tf_broadcaster_;
+    ros::Publisher odom_pub_;
 };
 
 int main(int argc, char **argv)
@@ -115,6 +119,9 @@ int main(int argc, char **argv)
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), left_sub,right_sub);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabStereo,&igb,_1,_2));
 
+    ros::NodeHandle local_nh("~");
+    igb.odom_pub_ = local_nh.advertise<nav_msgs::Odometry>("odometry", 1);
+
     ros::spin();
 
     // Stop all threads
@@ -155,17 +162,42 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,const se
         return;
     }
 
+    cv::Mat c_pose;
     if(do_rectify)
     {
         cv::Mat imLeft, imRight;
         cv::remap(cv_ptrLeft->image,imLeft,M1l,M2l,cv::INTER_LINEAR);
         cv::remap(cv_ptrRight->image,imRight,M1r,M2r,cv::INTER_LINEAR);
-        mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
+        c_pose = mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
     }
     else
     {
-        mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
+        c_pose = mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
     }
+
+    // Convert cv mat to tf
+    tf::Matrix3x3 r(c_pose.at<float>(0,0), c_pose.at<float>(0,1), c_pose.at<float>(0,2),
+        c_pose.at<float>(1,0), c_pose.at<float>(1,1), c_pose.at<float>(1,2),
+        c_pose.at<float>(2,0), c_pose.at<float>(2,1), c_pose.at<float>(2,2));
+    // Normalize rotation
+    tf::Quaternion q;
+    r.getRotation(q);
+    tf::Vector3 t(c_pose.at<float>(0,3), c_pose.at<float>(1,3), c_pose.at<float>(2,3));
+    tf::Transform base_transform(q.normalized(), t);
+    base_transform = base_transform.inverse();
+
+    // Publish camera pose
+    tf_broadcaster_.sendTransform(
+        tf::StampedTransform(base_transform, msgLeft->header.stamp,
+        "map", msgLeft->header.frame_id));
+
+    // Publish odometry message
+    nav_msgs::Odometry odometry_msg;
+    odometry_msg.header.stamp = msgLeft->header.stamp;
+    odometry_msg.header.frame_id = "map";
+    odometry_msg.child_frame_id = msgLeft->header.frame_id;
+    tf::poseTFToMsg(base_transform, odometry_msg.pose.pose);
+    odom_pub_.publish(odometry_msg);
 
 }
 
